@@ -60,6 +60,8 @@ class StoreFun(object):
         return self.last_res
 
 class Minimize(object):
+    """Minimize: Call signature same as scipy.minimize. Keeps track of history objects,
+       plus result of minimization under res.res...."""
     def __init__(self, fun, x0, args=(), method=None, jac=None,
                  hess=None, hessp=None, bounds=None, constraints=(),
                  tol=None, callback=None, options={},
@@ -106,13 +108,13 @@ def central_difference(f, x, dt, i=0):
 def cgrad_f(f, dt):
     return lambda x: np.array([central_difference(f, x, dt, i) for i in range(len(x))])
 
-def bgd(f, x, grad=None, callback=None, learning_rate=1e-1, hyper=(0.9,), dt=1e-3, *args, **kwargs):
+def bgd(f, x, grad=None, callback=None, hyper=(1e-2, 0.9), dt=1e-3, *args, **kwargs):
     """batch gradient descent with momentum.
     :param dt: step size for finite difference gradients
     :param learning_rate: global learning rate
     :param grad: function x -> df/dt|x
     :param mass: for momentum """
-    mass = hyper[0]
+    learning_rate, mass = hyper
     maxiter = kwargs['options']['maxiter'] if 'maxiter' in kwargs['options'] else 10000
     tol = kwargs['options']['gtol'] if 'gtol' in kwargs['options'] else 1e-5
 
@@ -128,9 +130,9 @@ def bgd(f, x, grad=None, callback=None, learning_rate=1e-1, hyper=(0.9,), dt=1e-
         if callback: callback(x, i, g)
     return MinimizeResult(x, f(x))
 
-def nesterov(f, x, grad=None, callback=None, learning_rate=1e-1, hyper=(0.9,), dt=1e-3, *args, **kwargs):
+def nesterov(f, x, grad=None, callback=None, hyper=(1e-2, 0.9,), dt=1e-3, *args, **kwargs):
     """nesterov accelerated gradient"""
-    mass = hyper[0]
+    learning_rate, mass = hyper
     maxiter = kwargs['options']['maxiter'] if 'maxiter' in kwargs['options'] else 10000
     tol = kwargs['options']['gtol'] if 'gtol' in kwargs['options'] else 1e-5
 
@@ -146,8 +148,9 @@ def nesterov(f, x, grad=None, callback=None, learning_rate=1e-1, hyper=(0.9,), d
         if callback: callback(x, i, g)
     return MinimizeResult(x, f(x))
 
-def RMSProp(f, x, grad=None, callback=None, learning_rate=1e-1, dt=1e-3, *args, **kwargs):
+def RMSProp(f, x, grad=None, callback=None, hyper=(1e-2,), dt=1e-3, *args, **kwargs):
     """RMSProp"""
+    learning_rate=(0.9,)
     maxiter = kwargs['options']['maxiter'] if 'maxiter' in kwargs['options'] else 10000
     tol = kwargs['options']['gtol'] if 'gtol' in kwargs['options'] else 1e-5
 
@@ -163,9 +166,9 @@ def RMSProp(f, x, grad=None, callback=None, learning_rate=1e-1, dt=1e-3, *args, 
         if callback: callback(x, i, g)
     return MinimizeResult(x, f(x))
 
-def adadelta(f, x, grad=None, callback=None, learning_rate=1e-1, hyper=(0.9,), dt=1e-3, *args, **kwargs):
+def adadelta(f, x, grad=None, callback=None, hyper=(1e-2, 0.9,), dt=1e-3, *args, **kwargs):
     """adadelta"""
-    mass = hyper[0]
+    learning_rate, mass = hyper
     maxiter = kwargs['options']['maxiter'] if 'maxiter' in kwargs['options'] else 10000
     tol = kwargs['options']['gtol'] if 'gtol' in kwargs['options'] else 1e-5
 
@@ -181,9 +184,9 @@ def adadelta(f, x, grad=None, callback=None, learning_rate=1e-1, hyper=(0.9,), d
         if callback: callback(x, i, g)
     return MinimizeResult(x, f(x))
 
-def adam(f, x, grad=None, callback=None, learning_rate=1e-1, hyper=(0.9, 0.999, 1e-8), dt=1e-3, *args, **kwargs):
+def adam(f, x, grad=None, callback=None, hyper=(1e-2, 0.9, 0.999, 1e-8), dt=1e-3, *args, **kwargs):
     """adadelta"""
-    b1, b2, e = hyper
+    learning_rate, b1, b2, e = hyper
     maxiter = kwargs['options']['maxiter'] if 'maxiter' in kwargs['options'] else 10000
     tol = kwargs['options']['gtol'] if 'gtol' in kwargs['options'] else 1e-5
 
@@ -202,6 +205,8 @@ def adam(f, x, grad=None, callback=None, learning_rate=1e-1, hyper=(0.9, 0.999, 
     return MinimizeResult(x, f(x))
 
 def minim_plus(*args, **kwargs):
+    '''minim plus: add new minimization routines to scipy minimize '''
+    print(f'method: {kwargs["method"]} with hyperparameters {kwargs["hyper"]}')
     if kwargs['method']=='bgd':
         return bgd(*args, **kwargs)
     if kwargs['method']=='nesterov':
@@ -218,10 +223,11 @@ def minim_plus(*args, **kwargs):
         return minim(*args, **kwargs)
 
 def minimize(*args, **kwargs):
+    gradient_methods = ['BFGS', 'CG', 'bgd', 'adam', 'nesterov', 'RMSProp', 'adadelta']
     (fun, x0), args = args[:2], args[2:]
     args = (fun, x0) + args
     if 'progressive' in kwargs and kwargs['progressive'] is True:
-        assert kwargs['method'] == 'BFGS' or kwargs['method'] == 'CG' or kwargs['method'] == 'bgd'
+        assert kwargs['method'] in gradient_methods
         if kwargs['schedule'] is None:
             raise Exception('must provide a schedule')
         schedule = kwargs['schedule']
@@ -285,29 +291,24 @@ def minimize(*args, **kwargs):
             res = MinimizeResult(err.x, err.fun)
         return res
 
-def test_minimize():
-    def f(x):
-        return np.linalg.norm(x)**2
-    maxiter, gtol, alpha = 20000, 1e-3, 1e-2
-    print('adam')
-    res5 = Minimize(f, np.random.randn(15), learning_rate=1e-2, maxiter=maxiter, method='adam',  hyper=(0, 0.3, 1), options={'gtol':gtol})
-    print('bgd')
-    res1 = Minimize(f, np.random.randn(15), learning_rate=alpha, maxiter=maxiter, method='bgd', options={'gtol':gtol})
-    print('nesterov')
-    res2 = Minimize(f, np.random.randn(15), learning_rate=alpha, maxiter=maxiter, method='nesterov', options={'gtol':gtol})
-    print('RMSProp')
-    res3 = Minimize(f, np.random.randn(15), learning_rate=alpha, maxiter=maxiter, method='RMSProp', options={'gtol':gtol})
-    print('adadelta')
-    res4 = Minimize(f, np.random.randn(15), learning_rate=alpha, maxiter=maxiter, method='adadelta', options={'gtol':gtol})
-    plt.plot(res1.last_stored_results, label='bgd')
-    plt.plot(res2.last_stored_results, label='nesterov')
-    plt.plot(res3.last_stored_results, label='RMSProp')
-    plt.plot(res4.last_stored_results, label='adadelta')
-    plt.plot(res5.last_stored_results, label='adam')
-    plt.xlabel('function evaluations')
-    plt.yscale('log')
-    plt.legend()
-    plt.savefig('compare.pdf')
+    def test_minimize():
+        def f(x):
+            return np.linalg.norm(x)**2
+        maxiter, gtol, alpha = 20000, 1e-3, 1e-2
+        res5 = Minimize(f, np.random.randn(15), axiter=maxiter, method='adam',  hyper=(alpha, 0, 0.3, 1), options={'gtol':gtol})
+        res1 = Minimize(f, np.random.randn(15), maxiter=maxiter, method='bgd', hyper=(alpha, 0.9), options={'gtol':gtol})
+        res2 = Minimize(f, np.random.randn(15), maxiter=maxiter, method='nesterov', hyper=(alpha, 0.9), options={'gtol':gtol})
+        res3 = Minimize(f, np.random.randn(15), maxiter=maxiter, method='RMSProp', hyper=(alpha, ), options={'gtol':gtol})
+        res4 = Minimize(f, np.random.randn(15), maxiter=maxiter, method='adadelta', hyper=(alpha, 0.9), options={'gtol':gtol})
+        plt.plot(res1.last_stored_results, label='bgd')
+        plt.plot(res2.last_stored_results, label='nesterov')
+        plt.plot(res3.last_stored_results, label='RMSProp')
+        plt.plot(res4.last_stored_results, label='adadelta')
+        plt.plot(res5.last_stored_results, label='adam')
+        plt.xlabel('function evaluations')
+        plt.yscale('log')
+        plt.legend()
+        plt.savefig('compare.pdf')
 
 
 if __name__=='__main__':

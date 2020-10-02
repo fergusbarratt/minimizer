@@ -1,0 +1,17 @@
+Metadata-Version: 2.1
+Name: minimizer
+Version: 0.0.1
+Summary: minimization algorithms
+Home-page: https://github.com/fergusbarratt/minimizer
+Author: Fergus Barratt
+License: UNKNOWN
+Description: # Minimizer.
+        
+        Adds a bunch of gradient descent routines to the scipy.optimize interface. All batch versions.
+        
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: GNU GPLv3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
